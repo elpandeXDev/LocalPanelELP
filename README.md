@@ -236,6 +236,10 @@ LocalPanelELP/
 - **Desarrollo frontend:** `http://localhost:5174`
 - **Desarrollo backend:** `http://localhost:5173`
 
+## Contribuidores
+
+- **ELP-Studios**
+
 ---
 
 *LocalPanelELP © ELP Studios 2026*
