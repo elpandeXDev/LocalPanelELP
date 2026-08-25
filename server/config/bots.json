@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "f2483221896aea31",
+    "name": "aternos24",
+    "directory": "D:\\ELP Studios\\Bots\\aternos24",
+    "language": "node",
+    "entryFile": "bot.js",
+    "envVars": "",
+    "autoStart": false,
+    "keepAlive": true,
+    "status": "stopped",
+    "createdAt": "2026-08-25T12:12:56.435Z",
+    "pid": null,
+    "lastStarted": "2026-08-25T12:13:00.382Z"
+  }
+]

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { api } from '../api.js'
 import {
   Bot, Plus, Search, Loader2, Play, Square, RotateCw, Trash2,
-  Terminal, X, Code, FolderInput, CheckCircle, AlertCircle,
+  Terminal, X, Code, FolderInput, CheckCircle, AlertCircle, Pencil, Download,
 } from 'lucide-react'
 
 const LANG_ICONS = {
@@ -20,11 +20,13 @@ export default function BotManager() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [mounts, setMounts] = useState([])
-  const [selectedMount, setSelectedMount] = useState('internal')
+  const [selectedMount, setSelectedMount] = useState('all-disks')
   const [scanning, setScanning] = useState(false)
   const [detectedBots, setDetectedBots] = useState([])
   const [showLogs, setShowLogs] = useState(null)
   const [languages, setLanguages] = useState([])
+  const [editingId, setEditingId] = useState(null)
+  const [installingId, setInstallingId] = useState(null)
 
   const [newBot, setNewBot] = useState({
     name: '',
@@ -32,6 +34,8 @@ export default function BotManager() {
     language: 'node',
     entryFile: '',
     envVars: '',
+    autoStart: false,
+    keepAlive: true,
   })
 
   const loadBots = () => {
@@ -63,25 +67,47 @@ export default function BotManager() {
   const handleAddBot = async (e) => {
     e.preventDefault()
     try {
-      await api.bots.create({
-        ...newBot,
-        directory: newBot.directory || undefined,
-      })
+      if (editingId) {
+        await api.bots.update(editingId, newBot)
+      } else {
+        await api.bots.create({
+          ...newBot,
+          directory: newBot.directory || undefined,
+        })
+      }
       setShowAdd(false)
-      setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '' })
+      setEditingId(null)
+      setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true })
       loadBots()
     } catch (err) {
       alert(err.message)
     }
   }
 
+  const handleEdit = (bot) => {
+    setEditingId(bot.id)
+    setNewBot({
+      name: bot.name,
+      directory: bot.directory,
+      language: bot.language,
+      entryFile: bot.entryFile || '',
+      envVars: bot.envVars || '',
+      autoStart: !!bot.autoStart,
+      keepAlive: bot.keepAlive !== false,
+    })
+    setShowAdd(true)
+  }
+
   const handleAddDetected = (bot) => {
+    setEditingId(null)
     setNewBot({
       name: bot.name,
       directory: bot.path,
       language: bot.language,
       entryFile: bot.entryFile || '',
-      envVars: '',
+      envVars: bot.envTemplate || '',
+      autoStart: false,
+      keepAlive: true,
     })
     setShowAdd(true)
   }
@@ -123,6 +149,18 @@ export default function BotManager() {
     }
   }
 
+  const handleInstall = async (id) => {
+    setInstallingId(id)
+    try {
+      await api.bots.install(id)
+      setShowLogs(bots.find((b) => b.id === id))
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setTimeout(() => setInstallingId(null), 1500)
+    }
+  }
+
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between">
@@ -133,7 +171,14 @@ export default function BotManager() {
           </h1>
           <p className="text-slate-400 mt-1">Gestiona bots de Discord de cualquier lenguaje</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="btn-primary">
+        <button
+          onClick={() => {
+            setEditingId(null)
+            setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true })
+            setShowAdd(true)
+          }}
+          className="btn-primary"
+        >
           <Plus className="w-4 h-4" />
           Anadir Bot
         </button>
@@ -150,7 +195,8 @@ export default function BotManager() {
             onChange={(e) => setSelectedMount(e.target.value)}
             className="input-field flex-1"
           >
-            <option value="internal">Almacenamiento interno</option>
+            <option value="all-disks">Todos los discos (A: - Z:)</option>
+            <option value="internal">Solo discos locales (auto)</option>
             {mounts.map((m) => (
               <option key={m.id} value={m.id}>{m.name} - {m.path}</option>
             ))}
@@ -160,6 +206,16 @@ export default function BotManager() {
             Escanea
           </button>
         </div>
+        {selectedMount === 'all-disks' && (
+          <p className="text-xs text-slate-500 mt-2">
+            Escaneo global activado: revisa todas las unidades disponibles y busca bots de Discord en cualquier lenguaje.
+          </p>
+        )}
+        {selectedMount !== 'all-disks' && (
+          <p className="text-xs text-slate-500 mt-2">
+            Tambien puedes usar "Todos los discos (A: - Z:)" para escanear globalmente.
+          </p>
+        )}
 
         {detectedBots.length > 0 && (
           <div className="mt-4 space-y-2">
@@ -216,11 +272,27 @@ export default function BotManager() {
                   </div>
                   <span
                     className={`text-xs px-2 py-1 rounded-md flex items-center gap-1.5 flex-shrink-0 ${
-                      running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'
+                      running
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : bot.status === 'restarting'
+                          ? 'bg-amber-500/20 text-amber-400'
+                          : bot.status === 'crashed'
+                            ? 'bg-red-500/20 text-red-400'
+                            : 'bg-slate-700 text-slate-400'
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                    {running ? 'Running' : 'Stopped'}
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        running
+                          ? 'bg-emerald-400 animate-pulse'
+                          : bot.status === 'restarting'
+                            ? 'bg-amber-400 animate-pulse'
+                            : bot.status === 'crashed'
+                              ? 'bg-red-400'
+                              : 'bg-slate-500'
+                      }`}
+                    />
+                    {running ? 'Running' : bot.status === 'restarting' ? 'Reiniciando' : bot.status === 'crashed' ? 'Crashed' : 'Stopped'}
                   </span>
                 </div>
 
@@ -228,6 +300,10 @@ export default function BotManager() {
                   <p className="truncate"><span className="text-slate-600">Dir:</span> {bot.directory}</p>
                   {bot.entryFile && <p><span className="text-slate-600">Entry:</span> {bot.entryFile}</p>}
                   {bot.pid && <p><span className="text-slate-600">PID:</span> {bot.pid}</p>}
+                  <p className="flex items-center gap-2 pt-1">
+                    {bot.autoStart && <span className="px-1.5 py-0.5 rounded bg-panel-600/20 text-panel-300">Auto-inicio</span>}
+                    {bot.keepAlive !== false && <span className="px-1.5 py-0.5 rounded bg-emerald-600/10 text-emerald-400">24/7 (auto-reinicio)</span>}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -258,6 +334,21 @@ export default function BotManager() {
                     <Terminal className="w-4 h-4" />
                   </button>
                   <button
+                    onClick={() => handleInstall(bot.id)}
+                    disabled={installingId === bot.id}
+                    className="btn-secondary text-sm py-1.5 disabled:opacity-40"
+                    title="Instalar dependencias"
+                  >
+                    {installingId === bot.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => handleEdit(bot)}
+                    className="btn-secondary text-sm py-1.5"
+                    title="Editar"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => handleDelete(bot.id)}
                     className="btn-secondary text-sm py-1.5 text-red-400 hover:bg-red-500/10"
                     title="Eliminar"
@@ -276,8 +367,10 @@ export default function BotManager() {
           bot={newBot}
           setBot={setNewBot}
           languages={languages}
-          onClose={() => setShowAdd(false)}
+          editing={!!editingId}
+          onClose={() => { setShowAdd(false); setEditingId(null) }}
           onSubmit={handleAddBot}
+          autoFillEntry={!editingId}
         />
       )}
 
@@ -286,7 +379,16 @@ export default function BotManager() {
   )
 }
 
-function AddBotModal({ bot, setBot, languages, onClose, onSubmit }) {
+function AddBotModal({ bot, setBot, languages, editing, onClose, onSubmit, autoFillEntry }) {
+  const handleLanguageChange = (langId) => {
+    const lang = languages.find((l) => l.id === langId)
+    setBot((prev) => ({
+      ...prev,
+      language: langId,
+      entryFile: autoFillEntry ? (lang?.entryFile || '') : prev.entryFile,
+    }))
+  }
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 fade-in" onClick={onClose}>
       <div
@@ -294,7 +396,7 @@ function AddBotModal({ bot, setBot, languages, onClose, onSubmit }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white">Anadir Bot de Discord</h3>
+          <h3 className="font-semibold text-white">{editing ? 'Editar Bot de Discord' : 'Anadir Bot de Discord'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
             <X className="w-5 h-5" />
           </button>
@@ -326,7 +428,7 @@ function AddBotModal({ bot, setBot, languages, onClose, onSubmit }) {
             <label className="block text-sm font-medium text-slate-300 mb-2">Lenguaje</label>
             <select
               value={bot.language}
-              onChange={(e) => setBot({ ...bot, language: e.target.value })}
+              onChange={(e) => handleLanguageChange(e.target.value)}
               className="input-field"
             >
               {languages.map((lang) => (
@@ -355,13 +457,36 @@ function AddBotModal({ bot, setBot, languages, onClose, onSubmit }) {
               placeholder="DISCORD_TOKEN=tu_token_aqui"
             />
           </div>
+          <div className="space-y-2 bg-slate-800/40 rounded-lg p-3">
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!bot.keepAlive}
+                onChange={(e) => setBot({ ...bot, keepAlive: e.target.checked })}
+                className="w-4 h-4 accent-panel-500"
+              />
+              Mantener vivo 24/7 (reiniciar automaticamente si se cae)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!bot.autoStart}
+                onChange={(e) => setBot({ ...bot, autoStart: e.target.checked })}
+                className="w-4 h-4 accent-panel-500"
+              />
+              Iniciar automaticamente al abrir el panel
+            </label>
+          </div>
+          <p className="text-xs text-slate-500">
+            No necesitas ejecutar <code className="text-slate-400">npm install</code> manualmente: el panel instala dependencias automaticamente en el primer inicio.
+          </p>
           <div className="flex gap-2 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">
               Cancelar
             </button>
             <button type="submit" className="btn-primary flex-1 justify-center">
               <Plus className="w-4 h-4" />
-              Anadir
+              {editing ? 'Guardar' : 'Anadir'}
             </button>
           </div>
         </form>

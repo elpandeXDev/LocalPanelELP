@@ -9,7 +9,8 @@ import minecraftRoutes from './routes/minecraft.js'
 import botRoutes from './routes/bots.js'
 import linkedRoutes from './routes/linked.js'
 import { authMiddleware } from './middleware/auth.js'
-import { stopAllBots, stopAllProcesses } from './processes.js'
+import { stopAllBots, stopAllProcesses, startBot } from './processes.js'
+import { loadBots } from './config/stores.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -38,6 +39,17 @@ if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
 
 app.listen(PORT, () => {
   console.log(`\n  LocalPanelELP running at http://localhost:${PORT}\n`)
+
+  try {
+    const bots = loadBots()
+    for (const bot of bots) {
+      if (bot.autoStart) {
+        startBot(bot.id)
+      }
+    }
+  } catch (err) {
+    console.error('Error al iniciar bots automaticos:', err.message)
+  }
 })
 
 process.on('SIGINT', () => {

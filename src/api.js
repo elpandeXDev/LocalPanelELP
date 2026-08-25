@@ -145,6 +145,7 @@ export const api = {
     start: (id) => request(`/bots/${id}/start`, { method: 'POST' }),
     stop: (id) => request(`/bots/${id}/stop`, { method: 'POST' }),
     restart: (id) => request(`/bots/${id}/restart`, { method: 'POST' }),
+    install: (id) => request(`/bots/${id}/install`, { method: 'POST' }),
     logs: (id, lines = 100) => request(`/bots/${id}/logs?lines=${lines}`),
     status: (id) => request(`/bots/${id}/status`),
     detect: (mount, depth) => request(`/bots/detect?mount=${encodeURIComponent(mount)}${depth ? `&depth=${depth}` : ''}`),
