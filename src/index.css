@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1e3a5f #0f172a;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #0f172a;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: #1e3a5f;
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #2b5278;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-panel-500 hover:bg-panel-600 text-white rounded-lg font-medium transition-colors duration-200 inline-flex items-center gap-2;
+  }
+  .btn-secondary {
+    @apply px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-medium transition-colors duration-200 inline-flex items-center gap-2 border border-slate-700;
+  }
+  .btn-danger {
+    @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200 inline-flex items-center gap-2;
+  }
+  .card {
+    @apply bg-slate-900 border border-slate-800 rounded-xl;
+  }
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-panel-500 focus:ring-1 focus:ring-panel-500 transition-colors;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-in;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}

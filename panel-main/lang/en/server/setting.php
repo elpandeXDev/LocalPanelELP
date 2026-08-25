@@ -1,0 +1,67 @@
+<?php
+
+return [
+    'title' => 'Settings',
+    'server_info' => [
+        'title' => 'Server Information',
+        'information' => 'Information',
+        'name' => 'Server Name',
+        'server_name' => 'Server Name: :name',
+        'notification_name' => 'Updated Server Name',
+        'description' => 'Server Description',
+        'notification_description' => 'Updated Server Description',
+        'failed' => 'Failed',
+        'uuid' => 'Server UUID',
+        'uuid_short' => 'Server ID',
+        'node_name' => 'Node Name',
+        'icon' => [
+            'upload' => 'Upload Icon',
+            'tooltip' => 'Using Egg Icon',
+            'updated' => 'Server icon updated',
+            'deleted' => 'Server icon deleted',
+        ],
+        'limits' => [
+            'title' => 'Limits',
+            'unlimited' => 'Unlimited',
+            'of' => 'of :max',
+            'cpu' => 'CPU',
+            'memory' => 'Memory',
+            'disk' => 'Disk Space',
+            'backups' => 'Backups',
+            'databases' => 'Databases',
+            'allocations' => 'Allocations',
+            'no_allocations' => 'No Additional Allocations',
+        ],
+        'sftp' => [
+            'title' => 'SFTP Information',
+            'connection' => 'Connection',
+            'action' => 'Connect to SFTP',
+            'username' => 'Username',
+            'password' => 'Password',
+            'password_body' => 'Your SFTP password is the same as the password you use to access this panel.',
+        ],
+    ],
+    'notifications' => [
+        'title' => 'Notifications',
+        'saved' => 'Notification Settings Updated',
+        'backup_manual' => [
+            'label' => 'Manual Backup Notifications',
+            'helper' => 'Receive a notification and email when a manually created backup for this server completes or fails.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Scheduled Backup Notifications',
+            'helper' => 'Receive a notification and email when a scheduled backup for this server completes or fails.',
+        ],
+    ],
+    'reinstall' => [
+        'title' => 'Reinstall Server',
+        'body' => 'Reinstalling your server will stop it, and then re-run the installation script that initially set it up.',
+        'body2' => 'Some files may be deleted or modified during this process, please back up your data before continuing.',
+        'action' => 'Reinstall',
+        'modal' => 'Are you sure you want to reinstall the server?',
+        'modal_description' => 'Some files may be deleted or modified during this process, please back up your data before continuing.',
+        'yes' => 'Yes, Reinstall',
+        'notification_start' => 'Reinstall Started',
+        'notification_fail' => 'Reinstall Failed',
+    ],
+];

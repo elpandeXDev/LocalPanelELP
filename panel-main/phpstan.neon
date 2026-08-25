@@ -1,0 +1,28 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+rules:
+    - App\PHPStan\ForbiddenGlobalFunctionsRule
+
+parameters:
+
+    paths:
+        - app
+
+    level: 6
+
+    treatPhpDocTypesAsCertain: false
+
+    ignoreErrors:
+        - identifier: argument.templateType
+        - identifier: missingType.generics
+        - '#Call to an undefined method Filament\\Forms\\Components\\(.+)::hintCopy\(\)#'
+
+        # We are getting and setting environment variables directly
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            paths:
+                - app/Console/Commands/Environment/*.php
+                - app/Extensions/Captcha/Schemas/*.php
+                - app/Extensions/OAuth/Schemas/*.php
+                - app/Filament/Admin/Pages/Settings.php

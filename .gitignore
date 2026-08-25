@@ -1,0 +1,9 @@
+node_modules/
+dist/
+storage/*
+!storage/.gitkeep
+config/auth.json
+*.log
+.DS_Store
+Thumbs.db
+panel-main.zip

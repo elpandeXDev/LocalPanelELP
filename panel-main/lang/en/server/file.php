@@ -1,0 +1,126 @@
+<?php
+
+return [
+    'title' => 'Files',
+    'name' => 'Name',
+    'size' => 'Size',
+    'modified_at' => 'Modified at',
+    'actions' => [
+        'open' => 'Open',
+        'download' => 'Download',
+        'connect_sftp' => 'Open current folder in SFTP',
+        'copy' => [
+            'title' => 'Copy',
+            'notification' => 'File Copied',
+        ],
+        'upload' => [
+            'title' => 'Upload',
+            'from_files' => 'Upload Files',
+            'from_url' => 'Upload from URL',
+            'url' => 'URL',
+            'drop_files' => 'Drop files to upload',
+            'success' => 'Files uploaded successfully',
+            'failed' => 'Failed to upload files',
+            'header' => 'Uploading Files',
+            'error' => 'An error occurred while uploading',
+            'progress' => ':done of :total',
+            'partial_failure' => ':failed of :total files failed to upload',
+            'too_large' => ':name exceeds the upload limit of :limit',
+            'network_error' => 'Network error',
+            'token_failed' => 'Failed to get an upload token',
+            'session_expired' => 'Your session expired, reload the page and try again',
+            'cancelled' => 'Cancelled',
+            'cancel' => 'Cancel',
+            'retry' => 'Retry',
+            'minimize' => 'Minimize',
+            'restore' => 'Restore',
+            'close' => 'Close',
+            'large_batch' => 'You are about to upload :count files.',
+            'upload_anyway' => 'Upload them',
+        ],
+        'rename' => [
+            'title' => 'Rename',
+            'file_name' => 'File Name',
+            'notification' => 'File Renamed',
+        ],
+        'move' => [
+            'title' => 'Move',
+            'directory' => 'Directory',
+            'directory_hint' => 'Enter the new directory, relative to the current directory.',
+            'new_location' => 'New Location',
+            'new_location_hint' => 'Enter the location of this file or folder, relative to the current directory.',
+            'notification' => 'File Moved',
+            'bulk_notification' => ':count Files were moved to :directory',
+        ],
+        'permissions' => [
+            'title' => 'Permissions',
+            'read' => 'Read',
+            'write' => 'Write',
+            'execute' => 'Execute',
+            'owner' => 'Owner',
+            'group' => 'Group',
+            'public' => 'Public',
+            'notification' => 'Permissions changed to :mode',
+        ],
+        'archive' => [
+            'title' => 'Archive',
+            'archive_name' => 'Archive Name',
+            'notification' => 'Archive Created',
+            'extension' => 'Extension',
+        ],
+        'unarchive' => [
+            'title' => 'Unarchive',
+            'notification' => 'Unarchive Completed',
+        ],
+        'new_file' => [
+            'title' => 'New file',
+            'file_name' => 'New file name',
+            'syntax' => 'Syntax Highlighting',
+            'create' => 'Create',
+        ],
+        'new_folder' => [
+            'title' => 'New folder',
+            'folder_name' => 'New folder name',
+        ],
+        'nested_search' => [
+            'title' => 'Nested Search',
+            'search_term' => 'Search term',
+            'search_term_placeholder' => 'Enter a search term, ex. *.txt',
+            'search' => 'Search',
+            'search_for_term' => 'Search :term',
+        ],
+        'delete' => [
+            'notification' => 'File Deleted',
+            'bulk_notification' => ':count files were deleted',
+        ],
+        'edit' => [
+            'title' => 'Editing: :file',
+            'save_close' => 'Save & Close',
+            'save' => 'Save',
+            'cancel' => 'Cancel',
+            'notification' => 'File Saved',
+        ],
+    ],
+    'alerts' => [
+        'file_too_large' => [
+            'title' => '<code>:name</code> is too large!',
+            'body' => 'Max is :max',
+        ],
+        'file_not_found' => [
+            'title' => '<code>:name</code> not found!',
+        ],
+        'file_not_editable' => [
+            'title' => '<code>:name</code> is a directory',
+        ],
+        'file_already_exists' => [
+            'title' => '<code>:name</code> already exists!',
+        ],
+        'files_node_error' => [
+            'title' => 'Could not load files!',
+        ],
+        'pelicanignore' => [
+            'title' => 'You are editing a <code>.pelicanignore</code> file!',
+            'body' => 'Any files or directories listed in here will be excluded from backups. Wildcards are supported by using an asterisk (<code>*</code>).<br>You can negate a prior rule by prepending an exclamation point (<code>!</code>).',
+        ],
+    ],
+];

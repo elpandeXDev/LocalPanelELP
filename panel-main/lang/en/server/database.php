@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'title' => 'Databases',
+    'empty' => 'No Databases',
+    'create_database' => 'Create Database',
+    'limit' => 'Database limit reached',
+    'viewing' => 'Viewing: :database',
+    'host' => 'Host',
+    'database' => 'Database',
+    'username' => 'Username',
+    'password' => 'Password',
+    'remote' => 'Remote',
+    'unlimited' => 'Unlimited',
+    'created_at' => 'Created at',
+    'name' => 'Database Name',
+    'name_hint' => 'Leaving this blank will auto generate a random name',
+    'connections_from' => 'Connections From',
+    'max_connections' => 'Max Connections',
+    'database_host' => 'Database Host',
+    'database_host_select' => 'Select Database Host',
+    'jdbc' => 'JDBC Connection String',
+    'create_notification' => 'Created :database',
+    'create_notification_fail' => 'Failed to create :database',
+    'delete_notification' => 'Deleted :database',
+    'delete_notification_fail' => 'Failed to delete :database',
+];

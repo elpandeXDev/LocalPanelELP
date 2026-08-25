@@ -1,0 +1,18 @@
+{
+	servers {
+		## docs https://caddyserver.com/docs/caddyfile/options#trusted-proxies
+		{$CADDY_TRUSTED_PROXIES} 
+		{$CADDY_STRICT_PROXIES}
+	}
+	admin off
+	{$CADDY_AUTO_HTTPS}
+	{$CADDY_LE_EMAIL}
+}
+
+{$CADDY_APP_URL} {
+	root * /var/www/html/public
+	encode gzip
+
+	file_server
+	php_fastcgi 127.0.0.1:9000
+}
