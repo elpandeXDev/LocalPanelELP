@@ -7,6 +7,7 @@ import {
   ChevronRight, Home, FolderPlus, Download, Trash2, Edit3,
   Search, MoreVertical, ArrowLeft, RefreshCw, X, FilePlus,
   LayoutGrid, List, ArrowUp, ArrowDown, HardDrive, Folder, File,
+  Archive,
 } from 'lucide-react'
 
 export default function FileBrowser() {
@@ -33,6 +34,7 @@ export default function FileBrowser() {
   const [checkedItems, setCheckedItems] = useState(new Set())
   const [showBatchDelete, setShowBatchDelete] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [extracting, setExtracting] = useState(null)
 
   const loadFiles = useCallback(async (path = '', mnt = mount) => {
     setLoading(true)
@@ -163,6 +165,19 @@ export default function FileBrowser() {
       alert(err.message)
     } finally {
       setBatchDeleting(false)
+    }
+  }
+
+  const handleExtract = async (item) => {
+    setExtracting(item.path)
+    setShowMenu(null)
+    try {
+      await api.files.extract(item.path, mount)
+      loadFiles(currentPath, mount)
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setExtracting(null)
     }
   }
 
@@ -449,6 +464,20 @@ export default function FileBrowser() {
                             Descargar
                           </button>
                         )}
+                        {item.type === 'file' && item.isArchive && (
+                          <button
+                            onClick={() => handleExtract(item)}
+                            disabled={extracting === item.path}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-panel-400 hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            {extracting === item.path ? (
+                              <div className="w-4 h-4 border-2 border-panel-400 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Archive className="w-4 h-4" />
+                            )}
+                            Extraer
+                          </button>
+                        )}
                         {item.type === 'file' && item.editable && (
                           <button
                             onClick={() => {
@@ -545,6 +574,20 @@ export default function FileBrowser() {
                         >
                           <Download className="w-4 h-4" />
                           Descargar
+                        </button>
+                      )}
+                      {item.type === 'file' && item.isArchive && (
+                        <button
+                          onClick={() => handleExtract(item)}
+                          disabled={extracting === item.path}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-panel-400 hover:bg-slate-700 disabled:opacity-50"
+                        >
+                          {extracting === item.path ? (
+                            <div className="w-4 h-4 border-2 border-panel-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Archive className="w-4 h-4" />
+                          )}
+                          Extraer
                         </button>
                       )}
                       {item.type === 'file' && item.editable && (

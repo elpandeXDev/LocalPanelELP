@@ -5,7 +5,7 @@ import {
   Server, ChevronRight, ToggleLeft, ToggleRight,
   Play, Square, RotateCw, Terminal, Send,
   Cpu, HardDrive, Activity, Clock, Download, Trash2, FolderOpen,
-  Settings, Database, FileText, Zap,
+  Settings, Database, FileText, Zap, Wifi,
 } from 'lucide-react'
 
 export default function MinecraftPanel() {
@@ -41,11 +41,18 @@ export default function MinecraftPanel() {
   const [backupsLoading, setBackupsLoading] = useState(false)
   const [creatingBackup, setCreatingBackup] = useState(false)
 
+  const [networkStatus, setNetworkStatus] = useState(null)
+  const [networkLoading, setNetworkLoading] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
+  const [optimizeResult, setOptimizeResult] = useState(null)
+
   const isActionLoading = (action) => actionLoading === action
   const isAnyActionLoading = !!actionLoading
 
   useEffect(() => {
-    api.linked.list().then((data) => setMounts(data.dirs))
+    api.linked.list()
+      .then((data) => setMounts(Array.isArray(data?.dirs) ? data.dirs : []))
+      .catch(() => setMounts([]))
   }, [])
 
   const checkServerStatus = useCallback(async (dirPath) => {
@@ -81,6 +88,18 @@ export default function MinecraftPanel() {
     setBackupsLoading(false)
   }, [])
 
+  const fetchNetworkStatus = useCallback(async (dirPath) => {
+    setNetworkLoading(true)
+    try {
+      const data = await api.minecraft.networkStatus(dirPath)
+      setNetworkStatus(data)
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setNetworkLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (selectedServer && activeTab === 'console') {
       fetchLogs(selectedServer.path)
@@ -98,6 +117,12 @@ export default function MinecraftPanel() {
       fetchBackups(selectedServer.path)
     }
   }, [selectedServer, activeTab, fetchBackups])
+
+  useEffect(() => {
+    if (selectedServer && activeTab === 'network') {
+      fetchNetworkStatus(selectedServer.path)
+    }
+  }, [selectedServer, activeTab, fetchNetworkStatus])
 
   useEffect(() => {
     if (logRef.current) {
@@ -274,6 +299,27 @@ export default function MinecraftPanel() {
       setBackups(prev => prev.filter(b => b.name !== name))
     } catch (err) {
       setMessage({ type: 'error', text: err.message })
+    }
+  }
+
+  const handleOptimizeNetwork = async () => {
+    if (!selectedServer) return
+    setOptimizing(true)
+    setOptimizeResult(null)
+    try {
+      const data = await api.minecraft.networkOptimize(selectedServer.path)
+      setOptimizeResult(data.results)
+      if (data.success) {
+        setMessage({ type: 'success', text: 'Red optimizada correctamente' })
+      } else {
+        setMessage({ type: 'error', text: 'Algunos ajustes no se pudieron aplicar (requiere admin)' })
+      }
+      setTimeout(() => setMessage(null), 4000)
+      fetchNetworkStatus(selectedServer.path)
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setOptimizing(false)
     }
   }
 
@@ -514,6 +560,7 @@ export default function MinecraftPanel() {
           <div className="flex items-center gap-1 bg-slate-800/50 border border-slate-700/50 rounded-lg p-1">
             <TabButton id="console" icon={Terminal} label="Consola" />
             <TabButton id="config" icon={Settings} label="Configuración" />
+            <TabButton id="network" icon={Wifi} label="Red" />
             <TabButton id="backups" icon={Database} label="Backups" />
           </div>
 
@@ -619,6 +666,88 @@ export default function MinecraftPanel() {
             </div>
           )}
 
+          {/* Network Tab */}
+          {activeTab === 'network' && (
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Wifi className="w-5 h-5 text-panel-400" />
+                  Optimización de Red
+                </h3>
+                <button
+                  onClick={handleOptimizeNetwork}
+                  disabled={optimizing}
+                  className="btn-primary text-sm"
+                >
+                  {optimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  Optimizar Red
+                </button>
+              </div>
+
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs rounded-lg px-4 py-3 mb-4">
+                <AlertCircle className="w-4 h-4 inline mr-2 flex-shrink-0" />
+                La optimización TCP requiere ejecutar el panel como administrador. Los cambios se aplican a nivel del sistema operativo y afectan a todas las conexiones.
+              </div>
+
+              {networkLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 text-panel-500 animate-spin" />
+                </div>
+              ) : networkStatus ? (
+                <div className="space-y-5">
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Ajustes TCP del Sistema</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <NetworkRow label="Auto-Tuning TCP" value={networkStatus.tcp?.autoTuning || 'Desconocido'} good={networkStatus.tcp?.autoTuning === 'normal'} />
+                      <NetworkRow label="Proveedor de Congestión" value={networkStatus.tcp?.congestionProvider || 'Desconocido'} good={networkStatus.tcp?.congestionProvider === 'ctcp'} />
+                      <NetworkRow label="RSS (Receive Side Scaling)" value={networkStatus.tcp?.rss || 'Desconocido'} good={networkStatus.tcp?.rss === 'enabled'} />
+                      <NetworkRow label="TCP Timestamps" value={networkStatus.tcp?.timestamps || 'Desconocido'} good={networkStatus.tcp?.timestamps === 'enabled'} />
+                      <NetworkRow label="Heurísticas TCP" value={networkStatus.tcp?.heuristics || 'Desconocido'} good={networkStatus.tcp?.heuristics === 'disabled'} />
+                      <NetworkRow label="ECN (Congestion Notification)" value={networkStatus.tcp?.ecn || 'Desconocido'} good={networkStatus.tcp?.ecn === 'enabled'} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Configuración del Servidor (server.properties)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <NetworkRow label="Umbral de Compresión" value={networkStatus.serverProperties?.['network-compression-threshold'] || '256'} good={networkStatus.serverProperties?.['network-compression-threshold'] === '256'} />
+                      <NetworkRow label="Distancia de Visión" value={networkStatus.serverProperties?.['view-distance'] || '10'} good={Number(networkStatus.serverProperties?.['view-distance'] || 10) <= 7} />
+                      <NetworkRow label="Distancia de Simulación" value={networkStatus.serverProperties?.['simulation-distance'] || '10'} good={Number(networkStatus.serverProperties?.['simulation-distance'] || 10) <= 5} />
+                      <NetworkRow label="Transporte Nativo" value={networkStatus.serverProperties?.['use-native-transport'] || 'true'} good={networkStatus.serverProperties?.['use-native-transport'] === 'true'} />
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">Optimizaciones JVM aplicadas automáticamente</h4>
+                    <ul className="text-xs text-slate-400 space-y-1">
+                      <li>- <code className="text-slate-300">java.net.preferIPv4Stack=true</code> — Evita resolución IPv6 lenta</li>
+                      <li>- <code className="text-slate-300">networkaddress.cache.ttl=30</code> — Cache DNS corta para tunnels dinámicos</li>
+                      <li>- <code className="text-slate-300">io.netty.allocator.type=unpooled</code> — Reduce latencia de asignación</li>
+                      <li>- <code className="text-slate-300">io.netty.recycler.maxCapacity.default=0</code> — Elimina pool de reciclaje</li>
+                    </ul>
+                  </div>
+
+                  {optimizeResult && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Resultado de la Optimización</h4>
+                      <div className="space-y-2">
+                        {optimizeResult.map((r, i) => (
+                          <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${r.success ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                            {r.success ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+                            <span className="flex-1">{r.label}</span>
+                            {!r.success && <span className="text-xs text-slate-500">{r.output}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-sm text-center py-8">No se pudo cargar el estado de red</p>
+              )}
+            </div>
+          )}
+
           {/* Backups Tab */}
           {activeTab === 'backups' && (
             <div className="card p-5">
@@ -684,6 +813,18 @@ export default function MinecraftPanel() {
   )
 }
 
+function NetworkRow({ label, value, good }) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+      <span className="text-sm text-slate-300">{label}</span>
+      <span className={`text-sm font-medium flex items-center gap-1.5 ${good ? 'text-emerald-400' : 'text-amber-400'}`}>
+        <span className={`w-2 h-2 rounded-full ${good ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+        {value}
+      </span>
+    </div>
+  )
+}
+
 function PropertyInput({ prop, value, onChange }) {
   if (prop.type === 'boolean') {
     const bool = value === 'true' || value === true
@@ -712,7 +853,7 @@ function PropertyInput({ prop, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
           className="input-field py-1.5 text-sm"
         >
-          {prop.options.map((opt) => (
+          {(prop.options || []).map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>

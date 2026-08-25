@@ -24,6 +24,37 @@ Panel web de gestión de archivos local, inspirado en Pelican Panel, diseñado p
 - **Cola de subidas** con progreso en tiempo real
 - **Almacenamiento local** en la carpeta `storage/`
 
+## Novedades (Actualización reciente)
+
+### Cambios principales
+
+- **Extracción de archivos comprimidos desde el panel** (`.zip`, `.tar`, `.tar.gz`, `.tgz`, `.gz`, `.rar`, `.7z`, `.bz2`)
+- **Botón “Extraer”** en el explorador de archivos para lanzar la extracción con 1 clic
+- **Selección de versión de Python por bot de Discord** (elige el ejecutable/versión para iniciar ese bot)
+- **Instalación de dependencias de bots** desde panel (incluyendo Python con versión seleccionada)
+- **Pestaña de red en Minecraft** con estado TCP y optimización rápida para tunnel
+- **Optimización de arranque Minecraft** con flags JVM orientados a reducir picos de latencia
+- **Correcciones de estabilidad UI** para evitar pantallas en negro por errores de render
+
+### Aviso para usuarios que ya descargaron el repo
+
+Actualiza tu copia local y reinicia el panel:
+
+```bash
+git pull
+npm install
+npm run build
+npm start
+```
+
+Si usas desarrollo:
+
+```bash
+git pull
+npm install
+npm run dev
+```
+
 ## Requisitos
 
 - [Node.js](https://nodejs.org) v18 o superior (incluye npm)
@@ -198,6 +229,7 @@ LocalPanelELP/
 | POST | `/api/files/move` | Mover |
 | GET | `/api/files/stats` | Estadísticas |
 | GET | `/api/files/search?q=&mount=` | Buscar |
+| POST | `/api/files/extract` | Extraer archivo comprimido |
 
 ### Directorios vinculados
 | Método | Ruta | Descripción |
@@ -214,6 +246,8 @@ LocalPanelELP/
 | POST | `/api/minecraft/server-properties` | Guardar properties |
 | POST | `/api/minecraft/accept-eula` | Aceptar EULA |
 | GET | `/api/minecraft/property-meta` | Metadatos de properties |
+| GET | `/api/minecraft/network-status?path=` | Estado de red/TCP |
+| POST | `/api/minecraft/network-optimize` | Optimizar red para tunnel |
 
 ### Bots de Discord
 | Método | Ruta | Descripción |
@@ -225,10 +259,12 @@ LocalPanelELP/
 | POST | `/api/bots/:id/start` | Iniciar bot |
 | POST | `/api/bots/:id/stop` | Detener bot |
 | POST | `/api/bots/:id/restart` | Reiniciar bot |
+| POST | `/api/bots/:id/install` | Instalar dependencias |
 | GET | `/api/bots/:id/logs?lines=` | Ver logs |
 | GET | `/api/bots/:id/status` | Estado del bot |
 | GET | `/api/bots/detect?mount=` | Detectar bots |
 | GET | `/api/bots/languages` | Lenguajes soportados |
+| GET | `/api/bots/python-versions` | Detectar versiones de Python |
 
 ## Puertos
 

@@ -15,7 +15,7 @@ function getLog(id) {
   return logs.get(id)
 }
 
-function inferCommandForEntry(entryFile, directory, preferredLanguage) {
+function inferCommandForEntry(entryFile, directory, preferredLanguage, preferredPythonVersion) {
   const full = path.isAbsolute(entryFile) ? entryFile : path.join(directory, entryFile)
   const ext = path.extname(full).toLowerCase()
   const isWin = process.platform === 'win32'
@@ -27,8 +27,14 @@ function inferCommandForEntry(entryFile, directory, preferredLanguage) {
   if (preferredLanguage) {
     switch (preferredLanguage) {
       case 'node': return { cmd: isWin ? 'node.exe' : 'node', args: [entryFile || 'index.js'] }
-      case 'python': return { cmd: isWin ? 'python.exe' : 'python3', args: [entryFile || 'main.py'] }
-      case 'python3': return { cmd: 'python3', args: [entryFile || 'main.py'] }
+      case 'python': {
+        const pyCmd = (preferredPythonVersion && preferredPythonVersion !== 'default') ? preferredPythonVersion : (isWin ? 'python.exe' : 'python3')
+        return { cmd: pyCmd, args: [entryFile || 'main.py'] }
+      }
+      case 'python3': {
+        const pyCmd3 = (preferredPythonVersion && preferredPythonVersion !== 'default') ? preferredPythonVersion : 'python3'
+        return { cmd: pyCmd3, args: [entryFile || 'main.py'] }
+      }
       case 'java': return { cmd: isWin ? 'java.exe' : 'java', args: ['-jar', entryFile || 'bot.jar'] }
       case 'ruby': return { cmd: isWin ? 'ruby.exe' : 'ruby', args: [entryFile || 'bot.rb'] }
       case 'go': return { cmd: 'go', args: goMain ? ['run', '.'] : ['run', entryFile || 'main.go'] }
@@ -42,7 +48,7 @@ function inferCommandForEntry(entryFile, directory, preferredLanguage) {
 
   // Infer by extension
   if (ext === '.js' || ext === '.mjs' || ext === '.cjs') return { cmd: isWin ? 'node.exe' : 'node', args: [entryFile] }
-  if (ext === '.py') return { cmd: isWin ? 'python.exe' : 'python3', args: [entryFile] }
+  if (ext === '.py') return { cmd: (preferredPythonVersion && preferredPythonVersion !== 'default') ? preferredPythonVersion : (isWin ? 'python.exe' : 'python3'), args: [entryFile] }
   if (ext === '.jar') return { cmd: isWin ? 'java.exe' : 'java', args: ['-jar', entryFile] }
   if (ext === '.rb') return { cmd: isWin ? 'ruby.exe' : 'ruby', args: [entryFile] }
   if (ext === '.go') return { cmd: 'go', args: ['run', entryFile] }
@@ -53,7 +59,7 @@ function inferCommandForEntry(entryFile, directory, preferredLanguage) {
 
   // Fallbacks
   if (fs.existsSync(path.join(directory, 'package.json'))) return { cmd: isWin ? 'node.exe' : 'node', args: [entryFile || 'index.js'] }
-  if (fs.existsSync(path.join(directory, 'requirements.txt'))) return { cmd: isWin ? 'python.exe' : 'python3', args: [entryFile || 'main.py'] }
+  if (fs.existsSync(path.join(directory, 'requirements.txt'))) return { cmd: (preferredPythonVersion && preferredPythonVersion !== 'default') ? preferredPythonVersion : (isWin ? 'python.exe' : 'python3'), args: [entryFile || 'main.py'] }
   if (csproj) return { cmd: 'dotnet', args: ['run', '--project', csproj] }
   if (goMain) return { cmd: 'go', args: ['run', '.'] }
 
@@ -76,7 +82,14 @@ function resolveInstallCommand(bot) {
     return { cmd: isWin ? 'npm.cmd' : 'npm', args: ['install'] }
   }
   if ((bot.language === 'python' || bot.language === 'python3') && fs.existsSync(path.join(dir, 'requirements.txt')) && !hasPythonDeps(dir)) {
-    return { cmd: isWin ? 'pip.exe' : 'pip3', args: ['install', '-r', 'requirements.txt'] }
+    const pyVer = bot.pythonVersion && bot.pythonVersion !== 'default' ? bot.pythonVersion : null
+    let pipCmd = isWin ? 'pip.exe' : 'pip3'
+    let pipArgs = ['install', '-r', 'requirements.txt']
+    if (pyVer) {
+      pipCmd = pyVer
+      pipArgs = ['-m', 'pip', 'install', '-r', 'requirements.txt']
+    }
+    return { cmd: pipCmd, args: pipArgs }
   }
   if (bot.language === 'go' && fs.existsSync(path.join(dir, 'go.mod'))) {
     return { cmd: 'go', args: ['mod', 'download'] }
@@ -148,7 +161,7 @@ export function startBot(botId) {
     installBotDependencies(botId)
   }
 
-  let { cmd, args } = inferCommandForEntry(bot.entryFile || '', bot.directory, bot.language)
+  let { cmd, args } = inferCommandForEntry(bot.entryFile || '', bot.directory, bot.language, bot.pythonVersion)
   if (bot.customCommand) {
     cmd = bot.customCommand
     args = bot.customArgs ? bot.customArgs.split(' ') : []
@@ -358,6 +371,17 @@ function forceKillProcessTree(proc, log, reason = 'Detencion agresiva forzada') 
   }
 }
 
+const NET_JVM_FLAGS = [
+  '-Djava.net.preferIPv4Stack=true',
+  '-Dnetworkaddress.cache.ttl=30',
+  '-Dnetworkaddress.cache.negative.ttl=0',
+  '-Dio.netty.noPreferDirect=true',
+  '-Dio.netty.recycler.maxCapacity.default=0',
+  '-Dio.netty.allocator.type=unpooled',
+  '-XX:+UseNuma',
+  '-XX:+AggressiveOpts',
+]
+
 export function startMcServer(serverId, dirPath, options = {}) {
   if (mcProcesses.has(serverId)) return { error: 'El servidor ya esta en ejecucion' }
 
@@ -382,15 +406,15 @@ export function startMcServer(serverId, dirPath, options = {}) {
     args = []
   } else if (isForge) {
     cmd = javaCmd
-    args = ['-jar', jar]
+    args = NET_JVM_FLAGS.concat(['-jar', jar])
   } else if (isFabric) {
     cmd = javaCmd
-    args = ['-jar', jar, 'nogui']
+    args = NET_JVM_FLAGS.concat(['-jar', jar, 'nogui'])
   } else {
     cmd = javaCmd
     const minMem = options.minMemory || '1024M'
     const maxMem = options.maxMemory || '2048M'
-    args = [`-Xms${minMem}`, `-Xmx${maxMem}`, '-jar', jar, 'nogui']
+    args = [`-Xms${minMem}`, `-Xmx${maxMem}`, ...NET_JVM_FLAGS, '-jar', jar, 'nogui']
   }
 
   log.push({ type: 'stdout', text: startScript ? `Iniciando servidor con script: ${startScript}` : `Iniciando servidor: ${jar}`, time: new Date().toISOString() })

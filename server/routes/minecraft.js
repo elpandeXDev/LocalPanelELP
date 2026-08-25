@@ -2,7 +2,7 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { exec } from 'child_process'
+import { exec, execSync } from 'child_process'
 import { listLinkedDirs, getLinkedDir } from '../config/stores.js'
 import {
   startMcServer, stopMcServer, restartMcServer,
@@ -565,6 +565,123 @@ router.get('/backups/download', (req, res) => {
   const filePath = path.join(backupDir, name)
   if (!fs.existsSync(filePath)) return res.status(404).send('Backup no encontrado')
   res.download(filePath)
+})
+
+// ===== Network Optimization =====
+
+function runNetsh(args) {
+  try {
+    return execSync(`netsh ${args}`, { encoding: 'utf-8', timeout: 5000, windowsHide: true }).trim()
+  } catch {
+    return null
+  }
+}
+
+function parseTcpGlobal(output) {
+  const settings = {}
+  if (!output) return settings
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim()
+    const idx = trimmed.indexOf(':')
+    if (idx > 0) {
+      const key = trimmed.slice(0, idx).trim()
+      const val = trimmed.slice(idx + 1).trim()
+      settings[key] = val
+    }
+  }
+  return settings
+}
+
+router.get('/network-status', (req, res) => {
+  const dirPath = (req.query.path || '').toString()
+  const isWin = process.platform === 'win32'
+
+  const tcpGlobal = isWin ? parseTcpGlobal(runNetsh('int tcp show global')) : {}
+  const heuristics = isWin ? runNetsh('int tcp show heuristics') : ''
+  const congestionProvider = tcpGlobal['Congestion Control Provider'] || tcpGlobal['Add-On Congestion Control Provider'] || 'unknown'
+  const autoTuning = tcpGlobal['Receive Window Auto-Tuning Level'] || 'unknown'
+  const rss = tcpGlobal['RSS'] || 'unknown'
+  const timestamps = tcpGlobal['TCP Timestamps'] || 'unknown'
+  const initialRto = tcpGlobal['Initial RTO'] || 'unknown'
+  const ecn = tcpGlobal['ECN Capability'] || 'unknown'
+
+  let serverProps = {}
+  if (dirPath && fs.existsSync(dirPath)) {
+    const propsFile = path.join(dirPath, 'server.properties')
+    if (fs.existsSync(propsFile)) {
+      serverProps = parseServerProperties(propsFile)
+    }
+  }
+
+  res.json({
+    isWindows: isWin,
+    tcp: {
+      autoTuning,
+      congestionProvider,
+      rss,
+      timestamps,
+      initialRto,
+      ecn,
+      heuristics: heuristics.includes('disabled') ? 'disabled' : 'enabled',
+    },
+    serverProperties: {
+      'network-compression-threshold': serverProps['network-compression-threshold'] || '256',
+      'view-distance': serverProps['view-distance'] || '10',
+      'simulation-distance': serverProps['simulation-distance'] || '10',
+      'use-native-transport': serverProps['use-native-transport'] || 'true',
+      'player-idle-timeout': serverProps['player-idle-timeout'] || '0',
+    },
+  })
+})
+
+router.post('/network-optimize', (req, res) => {
+  const { dirPath } = req.body
+  const isWin = process.platform === 'win32'
+  const results = []
+
+  if (isWin) {
+    const commands = [
+      { label: 'TCP Auto-Tuning (normal)', cmd: 'int tcp set global autotuninglevel=normal' },
+      { label: 'CTCP (Compound TCP)', cmd: 'int tcp set global congestionprovider=ctcp' },
+      { label: 'Desactivar heuristics TCP', cmd: 'int tcp set heuristics disabled' },
+      { label: 'RSS (Receive Side Scaling)', cmd: 'int tcp set global rss=enabled' },
+      { label: 'TCP Timestamps', cmd: 'int tcp set global timestamps=enabled' },
+      { label: 'Initial RTO 300ms', cmd: 'int tcp set global initialRto=300' },
+      { label: 'ECN (Explicit Congestion Notification)', cmd: 'int tcp set global ecncapability=enabled' },
+    ]
+
+    for (const { label, cmd } of commands) {
+      const out = runNetsh(cmd)
+      const ok = out !== null && (out.includes('OK') || out.includes('ok') || out === '')
+      results.push({ label, success: ok, output: out })
+    }
+  } else {
+    results.push({ label: 'Optimizacion TCP', success: false, output: 'Solo disponible en Windows' })
+  }
+
+  if (dirPath && fs.existsSync(dirPath)) {
+    const propsFile = path.join(dirPath, 'server.properties')
+    let props = {}
+    if (fs.existsSync(propsFile)) {
+      props = parseServerProperties(propsFile)
+    }
+
+    props['network-compression-threshold'] = '256'
+    props['view-distance'] = props['view-distance'] || '7'
+    props['simulation-distance'] = props['simulation-distance'] || '5'
+    props['use-native-transport'] = 'true'
+    props['player-idle-timeout'] = '0'
+
+    try {
+      fs.writeFileSync(propsFile, serializeServerProperties(props))
+      results.push({ label: 'server.properties optimizado', success: true, output: 'compression=256, view=7, sim=5, native=true' })
+    } catch (err) {
+      results.push({ label: 'server.properties optimizado', success: false, output: err.message })
+    }
+  }
+
+  const allOk = results.every((r) => r.success)
+  res.json({ success: allOk, results })
 })
 
 export default router

@@ -67,6 +67,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ source, destination, mount }),
       }),
+    extract: (path, mount = 'internal', destination) =>
+      request('/files/extract', {
+        method: 'POST',
+        body: JSON.stringify({ path, mount, destination }),
+      }),
     download: (path, mount = 'internal') => {
       window.open(`${BASE}/files/download?path=${encodeURIComponent(path)}&mount=${encodeURIComponent(mount)}`, '_blank')
     },
@@ -113,6 +118,9 @@ export const api = {
     acceptEula: (dirPath) =>
       request('/minecraft/accept-eula', { method: 'POST', body: JSON.stringify({ dirPath }) }),
     propertyMeta: () => request('/minecraft/property-meta'),
+    networkStatus: (dirPath) => request(`/minecraft/network-status?path=${encodeURIComponent(dirPath)}`),
+    networkOptimize: (dirPath) =>
+      request('/minecraft/network-optimize', { method: 'POST', body: JSON.stringify({ dirPath }) }),
     startServer: (dirPath, minMemory, maxMemory) =>
       request('/minecraft/server/start', { method: 'POST', body: JSON.stringify({ dirPath, minMemory, maxMemory }) }),
     stopServer: (dirPath) =>
@@ -150,5 +158,6 @@ export const api = {
     status: (id) => request(`/bots/${id}/status`),
     detect: (mount, depth) => request(`/bots/detect?mount=${encodeURIComponent(mount)}${depth ? `&depth=${depth}` : ''}`),
     languages: () => request('/bots/languages'),
+    pythonVersions: () => request('/bots/python-versions'),
   },
 }

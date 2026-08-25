@@ -1,6 +1,7 @@
 import express from 'express'
 import fs from 'fs'
 import path from 'path'
+import { execSync } from 'child_process'
 import {
   loadBots, addBot, updateBot, removeBot, getBot,
   listLinkedDirs, getLinkedDir,
@@ -305,7 +306,7 @@ router.get('/', (req, res) => {
 })
 
 router.post('/', (req, res) => {
-  const { name, directory, language, entryFile, envVars, autoStart, keepAlive } = req.body
+  const { name, directory, language, entryFile, envVars, autoStart, keepAlive, pythonVersion } = req.body
   if (!name || !directory) return res.status(400).json({ error: 'Nombre y directorio requeridos' })
   if (!fs.existsSync(directory)) return res.status(400).json({ error: 'El directorio no existe' })
 
@@ -317,6 +318,7 @@ router.post('/', (req, res) => {
     envVars: envVars || '',
     autoStart: autoStart || false,
     keepAlive: keepAlive !== false,
+    pythonVersion: pythonVersion || 'default',
     status: 'stopped',
   })
   res.json({ success: true, bot })
@@ -426,6 +428,87 @@ router.get('/languages', (req, res) => {
       entryFile: d.entryFile,
     })),
   })
+})
+
+router.get('/python-versions', (req, res) => {
+  const versions = []
+  const seen = new Set()
+
+  function addVersion(label, cmd) {
+    const key = cmd.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    versions.push({ label, command: cmd })
+  }
+
+  const isWin = process.platform === 'win32'
+
+  try {
+    const out = execSync('py --list', { encoding: 'utf-8', timeout: 5000, windowsHide: true })
+    for (const line of out.split('\n').filter(Boolean)) {
+      const trimmed = line.trim()
+      const match = trimmed.match(/^(V?\d[\d.]*)/)
+      if (match) {
+        const ver = match[1]
+        const pyCmd = isWin ? `py -${ver}` : `python${ver}`
+        addVersion(`Python ${ver} (${pyCmd})`, pyCmd)
+      }
+    }
+  } catch {}
+
+  try {
+    const out = execSync('python --version', { encoding: 'utf-8', timeout: 5000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const match = out.match(/Python\s+([\d.]+)/)
+    if (match) addVersion(`Python ${match[1]} (python)`, isWin ? 'python.exe' : 'python')
+  } catch {}
+
+  try {
+    const out = execSync('python3 --version', { encoding: 'utf-8', timeout: 5000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const match = out.match(/Python\s+([\d.]+)/)
+    if (match) addVersion(`Python ${match[1]} (python3)`, 'python3')
+  } catch {}
+
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA
+    if (localAppData) {
+      const pyBase = path.join(localAppData, 'Programs', 'Python')
+      try {
+        if (fs.existsSync(pyBase)) {
+          for (const dir of fs.readdirSync(pyBase)) {
+            const match = dir.match(/Python(\d+)/i)
+            if (match) {
+              const exe = path.join(pyBase, dir, 'python.exe')
+              if (fs.existsSync(exe)) {
+                const verNum = match[1]
+                const ver = `${verNum[0]}.${verNum.slice(1)}`
+                addVersion(`Python ${ver} (${exe})`, exe)
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    for (const drive of listWindowsDrives()) {
+      try {
+        const pyDir = path.join(drive, 'Python')
+        if (!fs.existsSync(pyDir)) continue
+        for (const dir of fs.readdirSync(pyDir)) {
+          const exe = path.join(pyDir, dir, 'python.exe')
+          if (fs.existsSync(exe)) {
+            const match = dir.match(/(\d+)\.(\d+)/)
+            if (match) addVersion(`Python ${match[0]} (${exe})`, exe)
+          }
+        }
+      } catch {}
+    }
+  }
+
+  if (versions.length === 0) {
+    addVersion('Python (default)', isWin ? 'python.exe' : 'python3')
+  }
+
+  res.json({ versions })
 })
 
 export default router

@@ -27,6 +27,7 @@ export default function BotManager() {
   const [languages, setLanguages] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [installingId, setInstallingId] = useState(null)
+  const [pythonVersions, setPythonVersions] = useState([])
 
   const [newBot, setNewBot] = useState({
     name: '',
@@ -36,6 +37,7 @@ export default function BotManager() {
     envVars: '',
     autoStart: false,
     keepAlive: true,
+    pythonVersion: 'default',
   })
 
   const loadBots = () => {
@@ -49,6 +51,7 @@ export default function BotManager() {
     loadBots()
     api.linked.list().then((data) => setMounts(data.dirs))
     api.bots.languages().then((data) => setLanguages(data.languages))
+    api.bots.pythonVersions().then((data) => setPythonVersions(data.versions)).catch(() => {})
   }, [])
 
   const handleScan = async () => {
@@ -77,7 +80,7 @@ export default function BotManager() {
       }
       setShowAdd(false)
       setEditingId(null)
-      setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true })
+      setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true, pythonVersion: 'default' })
       loadBots()
     } catch (err) {
       alert(err.message)
@@ -94,6 +97,7 @@ export default function BotManager() {
       envVars: bot.envVars || '',
       autoStart: !!bot.autoStart,
       keepAlive: bot.keepAlive !== false,
+      pythonVersion: bot.pythonVersion || 'default',
     })
     setShowAdd(true)
   }
@@ -108,6 +112,7 @@ export default function BotManager() {
       envVars: bot.envTemplate || '',
       autoStart: false,
       keepAlive: true,
+      pythonVersion: 'default',
     })
     setShowAdd(true)
   }
@@ -174,7 +179,7 @@ export default function BotManager() {
         <button
           onClick={() => {
             setEditingId(null)
-            setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true })
+            setNewBot({ name: '', directory: '', language: 'node', entryFile: '', envVars: '', autoStart: false, keepAlive: true, pythonVersion: 'default' })
             setShowAdd(true)
           }}
           className="btn-primary"
@@ -299,6 +304,9 @@ export default function BotManager() {
                 <div className="text-xs text-slate-500 space-y-1 mb-3">
                   <p className="truncate"><span className="text-slate-600">Dir:</span> {bot.directory}</p>
                   {bot.entryFile && <p><span className="text-slate-600">Entry:</span> {bot.entryFile}</p>}
+                  {bot.pythonVersion && bot.pythonVersion !== 'default' && (bot.language === 'python' || bot.language === 'python3') && (
+                    <p><span className="text-slate-600">Python:</span> {bot.pythonVersion}</p>
+                  )}
                   {bot.pid && <p><span className="text-slate-600">PID:</span> {bot.pid}</p>}
                   <p className="flex items-center gap-2 pt-1">
                     {bot.autoStart && <span className="px-1.5 py-0.5 rounded bg-panel-600/20 text-panel-300">Auto-inicio</span>}
@@ -367,6 +375,7 @@ export default function BotManager() {
           bot={newBot}
           setBot={setNewBot}
           languages={languages}
+          pythonVersions={pythonVersions}
           editing={!!editingId}
           onClose={() => { setShowAdd(false); setEditingId(null) }}
           onSubmit={handleAddBot}
@@ -379,7 +388,7 @@ export default function BotManager() {
   )
 }
 
-function AddBotModal({ bot, setBot, languages, editing, onClose, onSubmit, autoFillEntry }) {
+function AddBotModal({ bot, setBot, languages, pythonVersions, editing, onClose, onSubmit, autoFillEntry }) {
   const handleLanguageChange = (langId) => {
     const lang = languages.find((l) => l.id === langId)
     setBot((prev) => ({
@@ -436,6 +445,24 @@ function AddBotModal({ bot, setBot, languages, editing, onClose, onSubmit, autoF
               ))}
             </select>
           </div>
+          {(bot.language === 'python' || bot.language === 'python3') && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Version de Python</label>
+              <select
+                value={bot.pythonVersion || 'default'}
+                onChange={(e) => setBot({ ...bot, pythonVersion: e.target.value })}
+                className="input-field"
+              >
+                <option value="default">Python por defecto del sistema</option>
+                {pythonVersions.map((pv) => (
+                  <option key={pv.command} value={pv.command}>{pv.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">
+                Selecciona la version de Python que quieres usar para este bot.
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Archivo principal</label>
             <input

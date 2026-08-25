@@ -2,7 +2,10 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { execSync } from 'child_process'
 import multer from 'multer'
+import AdmZip from 'adm-zip'
+import * as tar from 'tar'
 import { getLinkedDir } from '../config/stores.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -131,6 +134,7 @@ function listDirectory(dirPath, relativePath) {
         icon: getFileIcon(item.name, item.isDirectory()),
         path: path.join(relativePath, item.name).replace(/\\/g, '/'),
         editable: !item.isDirectory() && isEditable(item.name) && stat.size < MAX_EDIT_SIZE,
+        isArchive: !item.isDirectory() && isArchive(item.name),
       }
     })
     .sort((a, b) => {
@@ -407,6 +411,103 @@ router.post('/create-file', (req, res) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(targetPath, '', 'utf-8')
   res.json({ success: true })
+})
+
+const ARCHIVE_EXTS = new Set(['.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.bz2'])
+
+function isArchive(filename) {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.tar.gz')) return true
+  if (lower.endsWith('.tar.bz2')) return true
+  const ext = path.extname(lower)
+  return ARCHIVE_EXTS.has(ext)
+}
+
+function getArchiveBaseName(filename) {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.tar.gz')) return path.basename(filename, '.tar.gz').replace(/\.tar\.gz$/i, '') || filename
+  if (lower.endsWith('.tar.bz2')) return path.basename(filename, '.tar.bz2').replace(/\.tar\.bz2$/i, '') || filename
+  const ext = path.extname(lower)
+  return path.basename(filename, ext)
+}
+
+router.post('/extract', async (req, res) => {
+  const { path: archivePath, mount = 'internal', destination } = req.body
+  if (!archivePath) return res.status(400).json({ error: 'Ruta requerida' })
+  const base = getBaseDir(mount)
+  if (!base) return res.status(404).json({ error: 'Montaje no encontrado' })
+  const targetPath = safeJoin(base, archivePath)
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    return res.status(404).json({ error: 'Archivo no encontrado' })
+  }
+  const stat = fs.statSync(targetPath)
+  if (stat.isDirectory()) {
+    return res.status(400).json({ error: 'No se puede extraer un directorio' })
+  }
+  if (!isArchive(path.basename(targetPath))) {
+    return res.status(400).json({ error: 'Formato no soportado. Formatos validos: .zip, .tar, .tar.gz, .tgz, .rar, .7z, .gz' })
+  }
+
+  const lowerName = path.basename(targetPath).toLowerCase()
+  const archiveDir = path.dirname(targetPath)
+  const cleanName = getArchiveBaseName(path.basename(targetPath))
+  const destDir = destination ? safeJoin(base, destination) : archiveDir
+  if (!destDir) return res.status(400).json({ error: 'Destino invalido' })
+  const extractDir = path.join(destDir, cleanName)
+
+  if (fs.existsSync(extractDir)) {
+    fs.rmSync(extractDir, { recursive: true })
+  }
+  fs.mkdirSync(extractDir, { recursive: true })
+
+  try {
+    if (lowerName.endsWith('.zip')) {
+      const zip = new AdmZip(targetPath)
+      zip.extractAllTo(extractDir, true)
+    } else if (lowerName.endsWith('.tar') || lowerName.endsWith('.tar.gz') || lowerName.endsWith('.tgz')) {
+      await tar.x({ file: targetPath, cwd: extractDir, strip: 0 })
+    } else if (lowerName.endsWith('.gz') && !lowerName.endsWith('.tar.gz')) {
+      const zlib = await import('zlib')
+      const compressed = fs.readFileSync(targetPath)
+      const decompressed = zlib.gunzipSync(compressed)
+      const outputName = path.basename(targetPath, path.extname(targetPath))
+      fs.writeFileSync(path.join(extractDir, outputName), decompressed)
+    } else if (lowerName.endsWith('.rar')) {
+      let extracted = false
+      try {
+        execSync(`unrar x -o+ "${targetPath}" "${extractDir}\\"`, { stdio: 'pipe', timeout: 120000 })
+        extracted = true
+      } catch {}
+      if (!extracted) {
+        try {
+          execSync(`7z x -o"${extractDir}" -y "${targetPath}"`, { stdio: 'pipe', timeout: 120000 })
+          extracted = true
+        } catch {}
+      }
+      if (!extracted) {
+        fs.rmSync(extractDir, { recursive: true })
+        return res.status(500).json({ error: 'No se pudo extraer RAR. Instala WinRAR o 7-Zip en el sistema.' })
+      }
+    } else if (lowerName.endsWith('.7z')) {
+      try {
+        execSync(`7z x -o"${extractDir}" -y "${targetPath}"`, { stdio: 'pipe', timeout: 120000 })
+      } catch {
+        fs.rmSync(extractDir, { recursive: true })
+        return res.status(500).json({ error: 'No se pudo extraer 7z. Instala 7-Zip en el sistema.' })
+      }
+    } else if (lowerName.endsWith('.tar.bz2') || lowerName.endsWith('.bz2')) {
+      await tar.x({ file: targetPath, cwd: extractDir, strip: 0 })
+    } else {
+      fs.rmSync(extractDir, { recursive: true })
+      return res.status(400).json({ error: 'Formato no soportado' })
+    }
+
+    const relativeExtractPath = path.relative(base, extractDir).replace(/\\/g, '/')
+    res.json({ success: true, extractedTo: relativeExtractPath })
+  } catch (err) {
+    try { fs.rmSync(extractDir, { recursive: true }) } catch {}
+    res.status(500).json({ error: `Error al extraer: ${err.message}` })
+  }
 })
 
 export default router
