@@ -2,6 +2,9 @@ node_modules/
 storage/*
 !storage/.gitkeep
 config/auth.json
+server/config/bots.json
+server/config/linked-dirs.json
+server/config/panel-settings.json
 *.log
 .DS_Store
 Thumbs.db

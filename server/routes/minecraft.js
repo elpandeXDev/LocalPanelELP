@@ -577,6 +577,48 @@ function runNetsh(args) {
   }
 }
 
+function runPowershell(cmd) {
+  try {
+    const out = execSync(`powershell -NoProfile -NonInteractive -Command "${cmd}"`, { encoding: 'utf-8', timeout: 8000, windowsHide: true })
+    return { success: true, output: out.trim() }
+  } catch (err) {
+    const output = (err.stderr || err.message || '').toString().trim()
+    return { success: false, output }
+  }
+}
+
+function isPrivilegeError(text) {
+  if (!text) return false
+  return /access is denied|acceso denegado|elevat|elevaci[oó]n|requires? administrator|administrador|permission denied|permiso denegado/i.test(text)
+}
+
+// netsh output field labels are localized on non-English Windows installs (e.g. Spanish),
+// which breaks lookups by English key. PowerShell's NetTCPIP cmdlets return
+// locale-independent property names, so they are used as the primary source.
+function getTcpSettingsPowershell() {
+  const { success, output } = runPowershell(
+    'Get-NetTCPSetting -SettingName InternetCustom | Select-Object AutoTuningLevelLocal,CongestionProvider,EcnCapability,Timestamps,InitialRto,ScalingHeuristics | ConvertTo-Json -Compress'
+  )
+  if (!success || !output) return null
+  try {
+    return JSON.parse(output)
+  } catch {
+    return null
+  }
+}
+
+function getRssPowershell() {
+  const { success, output } = runPowershell(
+    'Get-NetOffloadGlobalSetting | Select-Object ReceiveSideScaling | ConvertTo-Json -Compress'
+  )
+  if (!success || !output) return null
+  try {
+    return JSON.parse(output).ReceiveSideScaling
+  } catch {
+    return null
+  }
+}
+
 function parseTcpGlobal(output) {
   const settings = {}
   if (!output) return settings
@@ -596,14 +638,25 @@ router.get('/network-status', (req, res) => {
   const dirPath = (req.query.path || '').toString()
   const isWin = process.platform === 'win32'
 
-  const tcpGlobal = isWin ? parseTcpGlobal(runNetsh('int tcp show global')) : {}
-  const heuristics = isWin ? runNetsh('int tcp show heuristics') : ''
-  const congestionProvider = tcpGlobal['Congestion Control Provider'] || tcpGlobal['Add-On Congestion Control Provider'] || 'unknown'
-  const autoTuning = tcpGlobal['Receive Window Auto-Tuning Level'] || 'unknown'
-  const rss = tcpGlobal['RSS'] || 'unknown'
-  const timestamps = tcpGlobal['TCP Timestamps'] || 'unknown'
-  const initialRto = tcpGlobal['Initial RTO'] || 'unknown'
-  const ecn = tcpGlobal['ECN Capability'] || 'unknown'
+  const psSettings = isWin ? getTcpSettingsPowershell() : null
+  const rssPs = isWin ? getRssPowershell() : null
+
+  // Fallback to netsh text parsing only if PowerShell NetTCPIP module is unavailable
+  const tcpGlobal = isWin && !psSettings ? parseTcpGlobal(runNetsh('int tcp show global')) : {}
+  const heuristicsFallback = isWin && !psSettings ? runNetsh('int tcp show heuristics') : ''
+
+  const congestionProvider = psSettings?.CongestionProvider
+    || tcpGlobal['Congestion Control Provider'] || tcpGlobal['Add-On Congestion Control Provider'] || 'unknown'
+  const autoTuning = psSettings?.AutoTuningLevelLocal
+    || tcpGlobal['Receive Window Auto-Tuning Level'] || 'unknown'
+  const rss = rssPs || tcpGlobal['RSS'] || 'unknown'
+  const timestamps = psSettings?.Timestamps
+    || tcpGlobal['TCP Timestamps'] || 'unknown'
+  const initialRto = (psSettings?.InitialRto != null ? String(psSettings.InitialRto) : null)
+    || tcpGlobal['Initial RTO'] || 'unknown'
+  const ecn = psSettings?.EcnCapability
+    || tcpGlobal['ECN Capability'] || 'unknown'
+  const heuristicsValue = psSettings?.ScalingHeuristics || heuristicsFallback
 
   let serverProps = {}
   if (dirPath && fs.existsSync(dirPath)) {
@@ -622,7 +675,7 @@ router.get('/network-status', (req, res) => {
       timestamps,
       initialRto,
       ecn,
-      heuristics: heuristics.includes('disabled') ? 'disabled' : 'enabled',
+      heuristics: /disabled/i.test(String(heuristicsValue)) ? 'disabled' : 'enabled',
     },
     serverProperties: {
       'network-compression-threshold': serverProps['network-compression-threshold'] || '256',
@@ -640,20 +693,25 @@ router.post('/network-optimize', (req, res) => {
   const results = []
 
   if (isWin) {
-    const commands = [
-      { label: 'TCP Auto-Tuning (normal)', cmd: 'int tcp set global autotuninglevel=normal' },
-      { label: 'CTCP (Compound TCP)', cmd: 'int tcp set global congestionprovider=ctcp' },
-      { label: 'Desactivar heuristics TCP', cmd: 'int tcp set heuristics disabled' },
-      { label: 'RSS (Receive Side Scaling)', cmd: 'int tcp set global rss=enabled' },
-      { label: 'TCP Timestamps', cmd: 'int tcp set global timestamps=enabled' },
-      { label: 'Initial RTO 300ms', cmd: 'int tcp set global initialRto=300' },
-      { label: 'ECN (Explicit Congestion Notification)', cmd: 'int tcp set global ecncapability=enabled' },
+    const psCommands = [
+      { label: 'TCP Auto-Tuning (normal)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -AutoTuningLevelLocal Normal' },
+      { label: 'CTCP (Compound TCP)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -CongestionProvider CTCP' },
+      { label: 'Desactivar heuristics TCP', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -ScalingHeuristics Disabled' },
+      { label: 'RSS (Receive Side Scaling)', cmd: 'Set-NetOffloadGlobalSetting -ReceiveSideScaling Enabled' },
+      { label: 'TCP Timestamps', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -Timestamps Enabled' },
+      { label: 'Initial RTO 300ms', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -InitialRto 300' },
+      { label: 'ECN (Explicit Congestion Notification)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -EcnCapability Enabled' },
     ]
 
-    for (const { label, cmd } of commands) {
-      const out = runNetsh(cmd)
-      const ok = out !== null && (out.includes('OK') || out.includes('ok') || out === '')
-      results.push({ label, success: ok, output: out })
+    for (const { label, cmd } of psCommands) {
+      const { success, output } = runPowershell(cmd)
+      let finalOutput = 'OK'
+      if (!success) {
+        finalOutput = isPrivilegeError(output)
+          ? 'Requiere privilegios de administrador. Ejecuta el panel como Administrador.'
+          : (output || 'Error desconocido')
+      }
+      results.push({ label, success, output: finalOutput })
     }
   } else {
     results.push({ label: 'Optimizacion TCP', success: false, output: 'Solo disponible en Windows' })
