@@ -595,9 +595,19 @@ function isPrivilegeError(text) {
 // netsh output field labels are localized on non-English Windows installs (e.g. Spanish),
 // which breaks lookups by English key. PowerShell's NetTCPIP cmdlets return
 // locale-independent property names, so they are used as the primary source.
+// Note: the underlying properties are CIM enums, which ConvertTo-Json serializes
+// as raw numeric values unless explicitly converted with .ToString() first.
 function getTcpSettingsPowershell() {
   const { success, output } = runPowershell(
-    'Get-NetTCPSetting -SettingName InternetCustom | Select-Object AutoTuningLevelLocal,CongestionProvider,EcnCapability,Timestamps,InitialRto,ScalingHeuristics | ConvertTo-Json -Compress'
+    '$s=Get-NetTCPSetting -SettingName InternetCustom; ' +
+    '[PSCustomObject]@{' +
+    'AutoTuningLevelLocal=$s.AutoTuningLevelLocal.ToString();' +
+    'CongestionProvider=$s.CongestionProvider.ToString();' +
+    'EcnCapability=$s.EcnCapability.ToString();' +
+    'Timestamps=$s.Timestamps.ToString();' +
+    'InitialRto=[int]$s.InitialRto;' +
+    'ScalingHeuristics=$s.ScalingHeuristics.ToString()' +
+    '} | ConvertTo-Json -Compress'
   )
   if (!success || !output) return null
   try {
@@ -609,7 +619,7 @@ function getTcpSettingsPowershell() {
 
 function getRssPowershell() {
   const { success, output } = runPowershell(
-    'Get-NetOffloadGlobalSetting | Select-Object ReceiveSideScaling | ConvertTo-Json -Compress'
+    '$r=Get-NetOffloadGlobalSetting; [PSCustomObject]@{ReceiveSideScaling=$r.ReceiveSideScaling.ToString()} | ConvertTo-Json -Compress'
   )
   if (!success || !output) return null
   try {
