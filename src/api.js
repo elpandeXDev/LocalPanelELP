@@ -1,14 +1,31 @@
 const BASE = '/api'
+const DEFAULT_TIMEOUT_MS = 20000
 
 async function request(url, options = {}) {
-  const res = await fetch(`${BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    credentials: 'same-origin',
-  })
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...rest } = options
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  let res
+  try {
+    res = await fetch(`${BASE}${url}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        ...rest.headers,
+      },
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('La solicitud tardo demasiado en responder (timeout)')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Error del servidor')
   return data

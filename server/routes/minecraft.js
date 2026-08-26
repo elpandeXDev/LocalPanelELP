@@ -577,13 +577,25 @@ function runNetsh(args) {
   }
 }
 
-function runPowershell(cmd) {
+// Spawning powershell.exe has significant cold-start overhead (module loading, etc.),
+// often 0.5-2s per process. Running many sequential -Command invocations (one per
+// setting) made the "Optimizar Red" button and status refresh feel stuck for many
+// seconds. Instead, a single consolidated script is written to a temp .ps1 file and
+// executed in ONE process, cutting latency down to a single powershell startup.
+function runPowershellScript(scriptContent, timeoutMs = 10000) {
+  const tmpFile = path.join(os.tmpdir(), `lpelp-net-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`)
   try {
-    const out = execSync(`powershell -NoProfile -NonInteractive -Command "${cmd}"`, { encoding: 'utf-8', timeout: 8000, windowsHide: true })
+    fs.writeFileSync(tmpFile, scriptContent, 'utf-8')
+    const out = execSync(
+      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
+      { encoding: 'utf-8', timeout: timeoutMs, windowsHide: true }
+    )
     return { success: true, output: out.trim() }
   } catch (err) {
-    const output = (err.stderr || err.message || '').toString().trim()
+    const output = (err.stdout || err.stderr || err.message || '').toString().trim()
     return { success: false, output }
+  } finally {
+    fs.unlink(tmpFile, () => {})
   }
 }
 
@@ -597,18 +609,22 @@ function isPrivilegeError(text) {
 // locale-independent property names, so they are used as the primary source.
 // Note: the underlying properties are CIM enums, which ConvertTo-Json serializes
 // as raw numeric values unless explicitly converted with .ToString() first.
-function getTcpSettingsPowershell() {
-  const { success, output } = runPowershell(
-    '$s=Get-NetTCPSetting -SettingName InternetCustom; ' +
-    '[PSCustomObject]@{' +
-    'AutoTuningLevelLocal=$s.AutoTuningLevelLocal.ToString();' +
-    'CongestionProvider=$s.CongestionProvider.ToString();' +
-    'EcnCapability=$s.EcnCapability.ToString();' +
-    'Timestamps=$s.Timestamps.ToString();' +
-    'InitialRto=[int]$s.InitialRto;' +
-    'ScalingHeuristics=$s.ScalingHeuristics.ToString()' +
-    '} | ConvertTo-Json -Compress'
-  )
+function getNetworkInfoPowershell() {
+  const script = [
+    '$s = Get-NetTCPSetting -SettingName InternetCustom',
+    '$r = Get-NetOffloadGlobalSetting',
+    '[PSCustomObject]@{',
+    '  AutoTuningLevelLocal = $s.AutoTuningLevelLocal.ToString()',
+    '  CongestionProvider   = $s.CongestionProvider.ToString()',
+    '  EcnCapability        = $s.EcnCapability.ToString()',
+    '  Timestamps           = $s.Timestamps.ToString()',
+    '  InitialRto           = [int]$s.InitialRto',
+    '  ScalingHeuristics    = $s.ScalingHeuristics.ToString()',
+    '  ReceiveSideScaling   = $r.ReceiveSideScaling.ToString()',
+    '} | ConvertTo-Json -Compress',
+  ].join('\n')
+
+  const { success, output } = runPowershellScript(script, 6000)
   if (!success || !output) return null
   try {
     return JSON.parse(output)
@@ -617,13 +633,32 @@ function getTcpSettingsPowershell() {
   }
 }
 
-function getRssPowershell() {
-  const { success, output } = runPowershell(
-    '$r=Get-NetOffloadGlobalSetting; [PSCustomObject]@{ReceiveSideScaling=$r.ReceiveSideScaling.ToString()} | ConvertTo-Json -Compress'
-  )
+const OPTIMIZE_COMMANDS = [
+  { label: 'TCP Auto-Tuning (normal)', action: 'Set-NetTCPSetting -SettingName InternetCustom -AutoTuningLevelLocal Normal' },
+  { label: 'CTCP (Compound TCP)', action: 'Set-NetTCPSetting -SettingName InternetCustom -CongestionProvider CTCP' },
+  { label: 'Desactivar heuristics TCP', action: 'Set-NetTCPSetting -SettingName InternetCustom -ScalingHeuristics Disabled' },
+  { label: 'RSS (Receive Side Scaling)', action: 'Set-NetOffloadGlobalSetting -ReceiveSideScaling Enabled' },
+  { label: 'TCP Timestamps', action: 'Set-NetTCPSetting -SettingName InternetCustom -Timestamps Enabled' },
+  { label: 'Initial RTO 300ms', action: 'Set-NetTCPSetting -SettingName InternetCustom -InitialRto 300' },
+  { label: 'ECN (Explicit Congestion Notification)', action: 'Set-NetTCPSetting -SettingName InternetCustom -EcnCapability Enabled' },
+]
+
+function runNetworkOptimizePowershell() {
+  const lines = ['$results = @()']
+  for (const { label, action } of OPTIMIZE_COMMANDS) {
+    const safeLabel = label.replace(/'/g, "''")
+    lines.push(
+      `try { ${action} -ErrorAction Stop; $results += [PSCustomObject]@{label='${safeLabel}';success=$true;output='OK'} } ` +
+      `catch { $results += [PSCustomObject]@{label='${safeLabel}';success=$false;output=$_.Exception.Message} }`
+    )
+  }
+  lines.push('$results | ConvertTo-Json -Compress')
+
+  const { success, output } = runPowershellScript(lines.join('\n'), 12000)
   if (!success || !output) return null
   try {
-    return JSON.parse(output).ReceiveSideScaling
+    const parsed = JSON.parse(output)
+    return Array.isArray(parsed) ? parsed : [parsed]
   } catch {
     return null
   }
@@ -648,8 +683,7 @@ router.get('/network-status', (req, res) => {
   const dirPath = (req.query.path || '').toString()
   const isWin = process.platform === 'win32'
 
-  const psSettings = isWin ? getTcpSettingsPowershell() : null
-  const rssPs = isWin ? getRssPowershell() : null
+  const psSettings = isWin ? getNetworkInfoPowershell() : null
 
   // Fallback to netsh text parsing only if PowerShell NetTCPIP module is unavailable
   const tcpGlobal = isWin && !psSettings ? parseTcpGlobal(runNetsh('int tcp show global')) : {}
@@ -659,7 +693,7 @@ router.get('/network-status', (req, res) => {
     || tcpGlobal['Congestion Control Provider'] || tcpGlobal['Add-On Congestion Control Provider'] || 'unknown'
   const autoTuning = psSettings?.AutoTuningLevelLocal
     || tcpGlobal['Receive Window Auto-Tuning Level'] || 'unknown'
-  const rss = rssPs || tcpGlobal['RSS'] || 'unknown'
+  const rss = psSettings?.ReceiveSideScaling || tcpGlobal['RSS'] || 'unknown'
   const timestamps = psSettings?.Timestamps
     || tcpGlobal['TCP Timestamps'] || 'unknown'
   const initialRto = (psSettings?.InitialRto != null ? String(psSettings.InitialRto) : null)
@@ -703,25 +737,19 @@ router.post('/network-optimize', (req, res) => {
   const results = []
 
   if (isWin) {
-    const psCommands = [
-      { label: 'TCP Auto-Tuning (normal)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -AutoTuningLevelLocal Normal' },
-      { label: 'CTCP (Compound TCP)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -CongestionProvider CTCP' },
-      { label: 'Desactivar heuristics TCP', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -ScalingHeuristics Disabled' },
-      { label: 'RSS (Receive Side Scaling)', cmd: 'Set-NetOffloadGlobalSetting -ReceiveSideScaling Enabled' },
-      { label: 'TCP Timestamps', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -Timestamps Enabled' },
-      { label: 'Initial RTO 300ms', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -InitialRto 300' },
-      { label: 'ECN (Explicit Congestion Notification)', cmd: 'Set-NetTCPSetting -SettingName InternetCustom -EcnCapability Enabled' },
-    ]
-
-    for (const { label, cmd } of psCommands) {
-      const { success, output } = runPowershell(cmd)
-      let finalOutput = 'OK'
-      if (!success) {
-        finalOutput = isPrivilegeError(output)
-          ? 'Requiere privilegios de administrador. Ejecuta el panel como Administrador.'
-          : (output || 'Error desconocido')
+    const psResults = runNetworkOptimizePowershell()
+    if (psResults) {
+      for (const r of psResults) {
+        let finalOutput = 'OK'
+        if (!r.success) {
+          finalOutput = isPrivilegeError(r.output)
+            ? 'Requiere privilegios de administrador. Ejecuta el panel como Administrador.'
+            : (r.output || 'Error desconocido')
+        }
+        results.push({ label: r.label, success: r.success, output: finalOutput })
       }
-      results.push({ label, success, output: finalOutput })
+    } else {
+      results.push({ label: 'Optimizacion TCP', success: false, output: 'No se pudo ejecutar PowerShell' })
     }
   } else {
     results.push({ label: 'Optimizacion TCP', success: false, output: 'Solo disponible en Windows' })
