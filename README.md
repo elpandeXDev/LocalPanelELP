@@ -284,6 +284,7 @@ LocalPanelELP/
 ## Contribuidores
 
 - **ELP-Studios**
+- **[pepitogrillo05](https://github.com/pepitogrillo05)**
 
 ---
 
