@@ -23,18 +23,21 @@ Panel web de gestión de archivos local, inspirado en Pelican Panel, diseñado p
 - **Dashboard** con estadísticas de almacenamiento y accesos rápidos
 - **Cola de subidas** con progreso en tiempo real
 - **Almacenamiento local** en la carpeta `storage/`
+- **Aislamiento Docker**: ejecuta servidores y bots en contenedores aislados para mayor seguridad
 
-## Novedades (Actualización reciente)
+## Novedades (Actualización v1.2.0)
 
 ### Cambios principales
 
-- **Extracción de archivos comprimidos desde el panel** (`.zip`, `.tar`, `.tar.gz`, `.tgz`, `.gz`, `.rar`, `.7z`, `.bz2`)
-- **Botón “Extraer”** en el explorador de archivos para lanzar la extracción con 1 clic
-- **Selección de versión de Python por bot de Discord** (elige el ejecutable/versión para iniciar ese bot)
-- **Instalación de dependencias de bots** desde panel (incluyendo Python con versión seleccionada)
-- **Pestaña de red en Minecraft** con estado TCP y optimización rápida para tunnel
-- **Optimización de arranque Minecraft** con flags JVM orientados a reducir picos de latencia
-- **Correcciones de estabilidad UI** para evitar pantallas en negro por errores de render
+- **Modo de ejecución Docker**: aísla servidores Minecraft y bots de Discord en contenedores Docker para evitar que código malicioso acceda a tu sistema
+- **Toggle Local/Docker** en la pestaña Ajustes con detección automática de Docker
+- **Instalación de dependencias dentro de Docker** para bots
+- **Mapeo automático de puertos** para servidores Minecraft en Docker
+- **Avisos de seguridad** visuales cuando se ejecuta en modo local (sin aislar)
+
+### Requisitos para modo Docker
+- Instalar [Docker Desktop](https://www.docker.com/products/docker-desktop/) y mantenerlo en ejecución
+- Ir a **Ajustes** → **Modo de Ejecución** → activar Docker
 
 ### Aviso para usuarios que ya descargaron el repo
 
@@ -265,6 +268,12 @@ LocalPanelELP/
 | GET | `/api/bots/detect?mount=` | Detectar bots |
 | GET | `/api/bots/languages` | Lenguajes soportados |
 | GET | `/api/bots/python-versions` | Detectar versiones de Python |
+
+### Ajustes
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/settings/docker-status` | Estado de Docker y modo de ejecución |
+| POST | `/api/settings/execution-mode` | Cambiar modo (local/docker) |
 
 ## Puertos
 

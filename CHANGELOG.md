@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.2.0 - 2026-08-26
+
+### Added
+- **Docker isolation mode**: run Minecraft servers and Discord bots inside isolated containers to prevent malware from accessing the host system.
+- Execution mode toggle in Settings (Local vs Docker) with automatic Docker detection.
+- New settings endpoints:
+  - `GET /api/settings/docker-status`
+  - `POST /api/settings/execution-mode`
+- Bot dependency installation now supports Docker containers.
+- Minecraft servers in Docker auto-map the server port and pass EULA acceptance.
+- Security warnings in Settings UI when running in local (non-isolated) mode.
+
+### Docker images used
+- Minecraft: `eclipse-temurin:17-jdk`
+- Node.js bots: `node:20-slim`
+- Python bots: `python:3.11-slim`
+- Java bots: `eclipse-temurin:17-jdk`
+- Go bots: `golang:1.22-bookworm`
+- Ruby bots: `ruby:3.2-slim`
+- C# bots: `mcr.microsoft.com/dotnet/sdk:8.0`
+
+### Requirements for Docker mode
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+- Toggle the mode in **Ajustes** → **Modo de Ejecucion**.
+
+### Upgrade notes
+```bash
+git pull
+npm install
+npm run build
+npm start
+```
+
+---
+
 ## v1.1.0 - 2026-08-26
 
 ### Added
