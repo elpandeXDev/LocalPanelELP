@@ -1,6 +1,13 @@
-@echo off
 title LocalPanelELP
 color 0B
+
+:: Verificar privilegios de administrador; si no los tiene, relanzar elevado
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo  [INFO] Se requieren permisos de administrador. Solicitando elevacion...
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%~dp0' -Verb RunAs"
+    exit /b
+)
 
 echo.
 echo  ============================================

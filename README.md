@@ -79,15 +79,16 @@ npm -v
 ### 2) Primer inicio (rápido, recomendado)
 
 1. En la carpeta del proyecto, haz doble clic en `start.bat`.
-2. El script hará automáticamente:
+2. Windows mostrará un aviso de **UAC (Control de cuentas de usuario)**: acepta para conceder permisos de administrador. El panel necesita ejecutarse como administrador para poder aplicar optimizaciones de red (TCP/IP) y gestionar Docker correctamente.
+3. El script hará automáticamente:
    - instalación de dependencias (si faltan)
    - build del frontend (si falta `dist`)
    - arranque del servidor
-3. Abre en el navegador: `http://localhost:5173`
+4. Abre en el navegador: `http://localhost:5173`
 
 ### 3) Inicio manual (producción)
 
-Si prefieres hacerlo por comandos:
+Si prefieres hacerlo por comandos, abre una terminal **como Administrador** (clic derecho en el icono de terminal → "Ejecutar como administrador") antes de ejecutar:
 
 ```bash
 npm install
