@@ -160,4 +160,9 @@ export const api = {
     languages: () => request('/bots/languages'),
     pythonVersions: () => request('/bots/python-versions'),
   },
+  settings: {
+    dockerStatus: () => request('/settings/docker-status'),
+    setExecutionMode: (mode) =>
+      request('/settings/execution-mode', { method: 'POST', body: JSON.stringify({ mode }) }),
+  },
 }

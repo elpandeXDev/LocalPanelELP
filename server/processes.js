@@ -1,5 +1,5 @@
 import { spawn, exec } from 'child_process'
-import { getBot, updateBot } from './config/stores.js'
+import { getBot, updateBot, loadSettings } from './config/stores.js'
 import fs from 'fs'
 import path from 'path'
 
@@ -9,6 +9,35 @@ const manualStops = new Set()
 const crashState = new Map()
 const MAX_RESTART_ATTEMPTS = 5
 const RESTART_RESET_MS = 60_000
+
+function isDockerMode() {
+  return loadSettings().executionMode === 'docker'
+}
+
+function dockerContainerName(prefix, id) {
+  return `${prefix}-${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+}
+
+const DOCKER_IMAGES = {
+  node: 'node:20-slim',
+  python: 'python:3.11-slim',
+  python3: 'python:3.11-slim',
+  java: 'eclipse-temurin:17-jdk',
+  go: 'golang:1.22-bookworm',
+  ruby: 'ruby:3.2-slim',
+  csharp: 'mcr.microsoft.com/dotnet/sdk:8.0',
+}
+
+function getDockerImageForLanguage(language) {
+  return DOCKER_IMAGES[language] || DOCKER_IMAGES.node
+}
+
+function toDockerPath(p) {
+  if (process.platform === 'win32') {
+    return p.replace(/\\/g, '/')
+  }
+  return p
+}
 
 function getLog(id) {
   if (!logs.has(id)) logs.set(id, [])
@@ -118,12 +147,32 @@ export function installBotDependencies(botId) {
 
   log.push({ type: 'stdout', text: `Instalando dependencias: ${install.cmd} ${install.args.join(' ')}`, time: new Date().toISOString() })
 
-  const proc = spawn(install.cmd, install.args, {
-    cwd: bot.directory,
-    shell: true,
-    env: process.env,
-    windowsHide: true,
-  })
+  let proc
+  if (isDockerMode()) {
+    const image = getDockerImageForLanguage(bot.language)
+    const mountPath = toDockerPath(bot.directory)
+    const dockerArgs = [
+      'run', '--rm',
+      '-v', `${mountPath}:/app`,
+      '-w', '/app',
+      image,
+      install.cmd, ...install.args,
+    ]
+    log.push({ type: 'stdout', text: `[Docker] Instalando dependencias en contenedor temporal (${image})`, time: new Date().toISOString() })
+    proc = spawn('docker', dockerArgs, {
+      cwd: bot.directory,
+      shell: false,
+      env: process.env,
+      windowsHide: true,
+    })
+  } else {
+    proc = spawn(install.cmd, install.args, {
+      cwd: bot.directory,
+      shell: true,
+      env: process.env,
+      windowsHide: true,
+    })
+  }
 
   proc.stdout.on('data', (data) => {
     const lines = data.toString().split('\n').filter(Boolean)
@@ -167,11 +216,42 @@ export function startBot(botId) {
     args = bot.customArgs ? bot.customArgs.split(' ') : []
   }
 
-  const proc = spawn(cmd, args, {
-    cwd: bot.directory,
-    shell: true,
-    env: { ...process.env, ...(bot.envVars ? parseEnvVars(bot.envVars) : {}) },
-  })
+  const useDocker = isDockerMode()
+  let proc
+
+  if (useDocker) {
+    const containerName = dockerContainerName('bot', botId)
+    const image = getDockerImageForLanguage(bot.language)
+    const mountPath = toDockerPath(bot.directory)
+    const envVars = bot.envVars ? parseEnvVars(bot.envVars) : {}
+    const envFlags = Object.entries(envVars).map(([k, v]) => ['-e', `${k}=${v}`]).flat()
+
+    const dockerArgs = [
+      'run', '-i', '--rm',
+      '--name', containerName,
+      '-v', `${mountPath}:/app`,
+      '-w', '/app',
+      ...envFlags,
+      image,
+      cmd, ...args,
+    ]
+
+    log.push({ type: 'stdout', text: `[Docker] Iniciando bot en contenedor ${containerName} (${image})`, time: new Date().toISOString() })
+    log.push({ type: 'stdout', text: `[Docker] Comando: docker ${dockerArgs.join(' ')}`, time: new Date().toISOString() })
+
+    proc = spawn('docker', dockerArgs, {
+      cwd: bot.directory,
+      shell: false,
+      env: process.env,
+      windowsHide: true,
+    })
+  } else {
+    proc = spawn(cmd, args, {
+      cwd: bot.directory,
+      shell: true,
+      env: { ...process.env, ...(bot.envVars ? parseEnvVars(bot.envVars) : {}) },
+    })
+  }
 
   const startedAt = Date.now()
 
@@ -236,6 +316,11 @@ export function stopBot(botId) {
   manualStops.add(botId)
   crashState.delete(botId)
 
+  if (isDockerMode()) {
+    const containerName = dockerContainerName('bot', botId)
+    try { exec(`docker stop ${containerName}`, { timeout: 5000, windowsHide: true }, () => {}) } catch {}
+  }
+
   proc.kill('SIGTERM')
   setTimeout(() => {
     if (processes.has(botId)) {
@@ -274,6 +359,10 @@ export function getBotStatus(botId) {
 export function stopAllBots() {
   for (const [id, proc] of processes) {
     manualStops.add(id)
+    if (isDockerMode()) {
+      const containerName = dockerContainerName('bot', id)
+      try { exec(`docker stop ${containerName}`, { timeout: 5000, windowsHide: true }, () => {}) } catch {}
+    }
     proc.kill('SIGTERM')
     updateBot(id, { status: 'stopped', pid: null })
   }
@@ -421,14 +510,62 @@ export function startMcServer(serverId, dirPath, options = {}) {
   log.push({ type: 'stdout', text: `Comando: ${cmd} ${args.join(' ')}`, time: new Date().toISOString() })
   log.push({ type: 'stdout', text: `Directorio: ${dirPath}`, time: new Date().toISOString() })
 
-  const useShell = !!startScript
+  const useDocker = isDockerMode()
+  let proc
 
-  const proc = spawn(cmd, args, {
-    cwd: dirPath,
-    shell: useShell,
-    env: process.env,
-    windowsHide: true,
-  })
+  if (useDocker) {
+    const containerName = dockerContainerName('mc', serverId)
+    const mountPath = toDockerPath(dirPath)
+    const minMem = options.minMemory || '1024M'
+    const maxMem = options.maxMemory || '2048M'
+
+    let port = '25565'
+    try {
+      const propsFile = path.join(dirPath, 'server.properties')
+      if (fs.existsSync(propsFile)) {
+        const content = fs.readFileSync(propsFile, 'utf-8')
+        const match = content.match(/^server-port=(\d+)/m)
+        if (match) port = match[1]
+      }
+    } catch {}
+
+    if (startScript) {
+      log.push({ type: 'stderr', text: '[Docker] No se pueden ejecutar scripts .bat/.sh dentro de Docker. Usando jar directamente.', time: new Date().toISOString() })
+    }
+
+    const dockerArgs = [
+      'run', '-i', '--rm',
+      '--name', containerName,
+      '-v', `${mountPath}:/server`,
+      '-w', '/server',
+      '-p', `${port}:${port}`,
+      '-e', 'EULA=true',
+      'eclipse-temurin:17-jdk',
+      'java',
+      `-Xms${minMem}`, `-Xmx${maxMem}`,
+      ...NET_JVM_FLAGS,
+      '-jar', jar || 'server.jar',
+      'nogui',
+    ]
+
+    log.push({ type: 'stdout', text: `[Docker] Iniciando en contenedor ${containerName} (eclipse-temurin:17-jdk)`, time: new Date().toISOString() })
+    log.push({ type: 'stdout', text: `[Docker] Puerto mapeado: ${port}`, time: new Date().toISOString() })
+
+    proc = spawn('docker', dockerArgs, {
+      cwd: dirPath,
+      shell: false,
+      env: process.env,
+      windowsHide: true,
+    })
+  } else {
+    const useShell = !!startScript
+    proc = spawn(cmd, args, {
+      cwd: dirPath,
+      shell: useShell,
+      env: process.env,
+      windowsHide: true,
+    })
+  }
 
   proc.stdout.on('data', (data) => {
     const lines = data.toString().split('\n').filter(Boolean)
@@ -463,6 +600,11 @@ export function stopMcServer(serverId) {
 
   const log = getMcLog(serverId)
   log.push({ type: 'stop', text: 'Enviando comando stop al servidor...', time: new Date().toISOString() })
+
+  if (isDockerMode()) {
+    const containerName = dockerContainerName('mc', serverId)
+    try { exec(`docker stop ${containerName}`, { timeout: 5000, windowsHide: true }, () => {}) } catch {}
+  }
 
   try {
     proc.stdin.write('stop\n')
@@ -524,6 +666,10 @@ export function getMcServerStatus(serverId) {
 
 export function stopAllMcServers() {
   for (const [id, proc] of mcProcesses) {
+    if (isDockerMode()) {
+      const containerName = dockerContainerName('mc', id)
+      try { exec(`docker stop ${containerName}`, { timeout: 5000, windowsHide: true }, () => {}) } catch {}
+    }
     try { proc.stdin.write('stop\n') } catch {}
     setTimeout(() => {
       try { proc.kill('SIGTERM') } catch {}

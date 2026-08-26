@@ -8,6 +8,7 @@ import fileRoutes from './routes/files.js'
 import minecraftRoutes from './routes/minecraft.js'
 import botRoutes from './routes/bots.js'
 import linkedRoutes from './routes/linked.js'
+import settingsRoutes from './routes/settings.js'
 import { authMiddleware } from './middleware/auth.js'
 import { stopAllBots, stopAllProcesses, startBot } from './processes.js'
 import { loadBots } from './config/stores.js'
@@ -26,6 +27,7 @@ app.use('/api/files', authMiddleware, fileRoutes)
 app.use('/api/minecraft', authMiddleware, minecraftRoutes)
 app.use('/api/bots', authMiddleware, botRoutes)
 app.use('/api/linked', authMiddleware, linkedRoutes)
+app.use('/api/settings', authMiddleware, settingsRoutes)
 
 if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
   const distPath = path.join(__dirname, '..', 'dist')

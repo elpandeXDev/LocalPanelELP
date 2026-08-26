@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CONFIG_DIR = path.join(__dirname, '..', 'config')
 const LINKED_FILE = path.join(CONFIG_DIR, 'linked-dirs.json')
 const BOTS_FILE = path.join(CONFIG_DIR, 'bots.json')
+const SETTINGS_FILE = path.join(CONFIG_DIR, 'panel-settings.json')
 
 if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true })
 
@@ -86,4 +87,28 @@ export function removeBot(id) {
 export function getBot(id) {
   const bots = loadBots()
   return bots.find((b) => b.id === id)
+}
+
+const DEFAULT_SETTINGS = {
+  executionMode: 'local',
+}
+
+export function loadSettings() {
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SETTINGS, null, 2))
+    return { ...DEFAULT_SETTINGS }
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
+    return { ...DEFAULT_SETTINGS, ...data }
+  } catch {
+    return { ...DEFAULT_SETTINGS }
+  }
+}
+
+export function saveSettings(updates) {
+  const current = loadSettings()
+  const next = { ...current, ...updates }
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next, null, 2))
+  return next
 }
