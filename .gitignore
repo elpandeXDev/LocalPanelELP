@@ -1,5 +1,4 @@
 node_modules/
-dist/
 storage/*
 !storage/.gitkeep
 config/auth.json
